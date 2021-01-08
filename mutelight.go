@@ -3,7 +3,7 @@ package main
 import (
 	"errors"
 	"github.com/godbus/dbus"
-	"github.com/hink/go-blink1"
+	"github.com/todbot/go-blink1"
 	"github.com/sqp/pulseaudio"
 	"log"
 )
