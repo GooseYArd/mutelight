@@ -85,6 +85,11 @@ To test, say:
 Using the index of your desired source. I use pavucontrol to verify that the
 source is really muted when the light is on.
 
+If you're an xmobar user, you can add:
+
+    Run PipeReader "/tmp/mutelight.sock" "mutelight"
+
+to "commands"
 
 
 Happy hacking!
