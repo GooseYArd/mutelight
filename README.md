@@ -44,10 +44,47 @@ to be unloved, so I'm using todman's fork instead. Should todman's fork ever
 disappear, I've stashed the patch in this repo as well- just apply it to the
 go-blink1 sources before building.
 
+I'll probably change the solid red light to the throbbing pattern that I was
+generating with the Python bindings, but I was too lazy to figure it out with
+go-blink(1) (although I think its probably trivial).
+
 I'm not totally sure whether the default Pulse source is meant to have index 0
 when listing sources, and I'm loathe to screw around with my Pulseaudio
 configuration much since I've screwed it up many times before, so there's a
 good chance you'll need to adjust the source index which is hardcoded in the
 source.
+
+Once its started, you can start it from an ~/.xsession file, or do what I did
+and use a systemd user system unit.
+
+Create the file ~/.config/systemd/user/mutelight.service
+
+    [Unit]
+    Description=MuteLight
+
+    [Service]
+    Type	    = simple
+    Restart     = always
+    RestartSec  = 10
+    ExecStart   = /home/gooseyard/bin/mutelight
+
+    [Install]
+    WantedBy=session.target
+
+Say:
+
+systemctl --user daemon-reload
+systemctl --user enable mutelight.service
+systemctl --user start mutelight.service
+
+To test, say:
+
+    pactl set-source-mute 1 toggle
+
+
+Using the index of your desired source. I use pavucontrol to verify that the
+source is really muted when the light is on.
+
+
 
 Happy hacking!
