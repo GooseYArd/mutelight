@@ -17,16 +17,16 @@ import (
 )
 
 var quit = make(chan struct{})
-var state_chan = make(chan muteState)
-var sock_path = "/tmp/mutelight.sock"
+var stateChan = make(chan muteState)
+var sockPath = "/tmp/mutelight.sock"
 
 // The command I bind to a key in xmonad to mute my mic is
 // pactl set-source-mute 1 toggle
 
 // Adjust this to the source you want to mute
-var target_device = dbus.ObjectPath("/org/pulseaudio/core1/source1")
+var deviceName = "alsa_input.usb-BEHRINGER_UMC202HD_192k-00.analog-stereo"
 
-func PreparePipe(path string) {
+func preparePipe(path string) {
 	pipeExists := false
 	fileInfo, err := os.Stat(path)
 
@@ -48,7 +48,7 @@ func PreparePipe(path string) {
 	}
 }
 
-func WriteState(pipe string, muted bool) {
+func writeState(pipe string, muted bool) {
 	sock, err := os.OpenFile(pipe, os.O_WRONLY|syscall.O_NONBLOCK, 0600)
 	testFatal(err, "Unable to open status pipe")
 	defer sock.Close()
@@ -76,11 +76,13 @@ func main() {
 	testFatal(e, "connect to the pulse service")
 	defer pulse.Close()
 
-	app := &AppPulse{}
+        preparePipe(sockPath)
+
+        app := &appPulse{Client: pulse, targetDevice: deviceName}
 	pulse.Register(app)
 	defer pulse.Unregister(app)
 
-	muted, err := is_muted(pulse, target_device)
+	muted, err := isMuted(pulse, deviceName)
 	testFatal(err, "couldn't find target device")
 
 	device, err := blink1.OpenNextDevice()
@@ -94,7 +96,7 @@ func main() {
 		}
 		device.SetState(color)
 	}
-	WriteState(sock_path, muted)
+	writeState(sockPath, muted)
 
 	go func() {
 		if err != nil {
@@ -102,17 +104,17 @@ func main() {
 		}
 		for {
 			select {
-			case state := <-state_chan:
+			case state := <-stateChan:
 				if state.muted {
 					color := blink1.State{}
 					device.SetState(color)
-					WriteState(sock_path, state.muted)
+					writeState(sockPath, state.muted)
 				} else {
 					color := blink1.State{
 						Red: 255,
 					}
 					device.SetState(color)
-					WriteState(sock_path, state.muted)
+					writeState(sockPath, state.muted)
 				}
 			}
 		}
@@ -124,28 +126,56 @@ func main() {
 	<-quit
 }
 
-func is_muted(client *pulseaudio.Client, path dbus.ObjectPath) (bool, error) {
+
+func isMuted(client *pulseaudio.Client, deviceName string) (bool, error) {
 	sources, e := client.Core().ListPath("Sources")
 	testFatal(e, "get list of sinks")
 
 	if len(sources) == 0 {
-		return false, errors.New("no sources!")
+            return false, errors.New("no sources")
 	}
 
-	dev := client.Device(sources[1])
-	mute, _ := dev.Bool("Mute")
-	return mute, nil
+        for _, path := range sources {
+            dev := client.Device(path)
+            var name string
+            dev.Get("Name", &name)
+            if name == deviceName {
+                mute, _ := dev.Bool("Mute")
+                if mute {
+                    log.Printf("Device %s muted", name)
+                } else {
+                    log.Printf("Device %s unmuted", name)
+                }
+                return mute, nil
+            }
+        }
+
+        return false, nil
 }
 
-type AppPulse struct{}
+type appPulse struct{
+    Client *pulseaudio.Client
+    targetDevice string
+}
 
-func (ap *AppPulse) DeviceMuteUpdated(path dbus.ObjectPath, state bool) {
-	if path == target_device {
-		state_msg := muteState{
-			muted: state,
-		}
-		state_chan <- state_msg
-	}
+func (ap *appPulse) DeviceMuteUpdated(path dbus.ObjectPath, state bool) {
+        dev := ap.Client.Device(path)
+        var name string
+        dev.Get("Name", &name)
+        if name == deviceName {
+                if state {
+                    log.Printf("Device %s muted", name)
+                } else {
+                    log.Printf("Device %s unmuted", name)
+                }
+            stageMsg := muteState{
+                    muted: state,
+            }
+            stateChan <- stageMsg
+        } else {
+            log.Printf("%s != %s\n", path, ap.targetDevice)
+        }
+
 }
 
 func testFatal(e error, msg string) {
